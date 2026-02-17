@@ -21,7 +21,12 @@ fn main() {
                 let hh = secs / 3600;
                 let mm = (secs % 3600) / 60;
                 let ss = secs % 60;
-                println!("({:02}:{:02}:{:02})", hh, mm, ss);
+                let output = format!("({:02}:{:02}:{:02})", hh, mm, ss);
+                if last_status.unwrap() {
+                    println!("{}", output.green());
+                } else {
+                    println!("{}", output.red());
+                }
             }
             let timestamp = Local::now().format("%H:%M:%S").to_string();
             let output = format!("[{}]", timestamp);
