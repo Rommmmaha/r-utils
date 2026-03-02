@@ -10,8 +10,8 @@ pub fn run(state: &str) {
         layer: None,
         timeout_ms: None,
         operations: vec![utils::DrawOperation::Rectangle(utils::RectangleParams {
-            x1: 1,
-            y1: 1,
+            x1: 0,
+            y1: 0,
             x2: 1920,
             y2: 1080,
             fill_color: "0x00000000".to_string(),
