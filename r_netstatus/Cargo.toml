@@ -1,5 +1,5 @@
 [package]
-name = "_netstatus"
+name = "r_netstatus"
 version = "0.1.0"
 edition = "2024"
 [dependencies]

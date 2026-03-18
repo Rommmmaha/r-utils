@@ -1,5 +1,5 @@
 [package]
-name = "_aidump"
+name = "r_aidump"
 version = "0.1.0"
 edition = "2024"
 [dependencies]
