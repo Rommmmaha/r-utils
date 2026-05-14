@@ -1,6 +1,5 @@
 use std::env;
 mod cmd_cycle;
-mod cmd_hyprland;
 mod cmd_ptt;
 mod cmd_volume;
 mod utils;
@@ -19,11 +18,6 @@ fn main() {
         "ptt" => {
             if args.len() > 2 {
                 cmd_ptt::run(&args[2]);
-            }
-        }
-        "ws" => {
-            if args.len() > 2 {
-                cmd_hyprland::run(&args[2]);
             }
         }
         _ => {}
