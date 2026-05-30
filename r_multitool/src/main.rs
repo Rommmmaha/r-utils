@@ -1,25 +1,25 @@
-use std::env;
+use clap::Parser;
 mod cmd_cycle;
 mod cmd_ptt;
 mod cmd_volume;
 mod utils;
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        return;
+#[derive(Parser)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+#[derive(clap::Subcommand)]
+enum Commands {
+    Cycle,
+    Vol { amount: String },
+    Ptt { state: String },
+}
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Cycle => cmd_cycle::run()?,
+        Commands::Vol { amount } => cmd_volume::run(&amount)?,
+        Commands::Ptt { state } => cmd_ptt::run(&state)?,
     }
-    match args[1].as_str() {
-        "cycle" => cmd_cycle::run(),
-        "vol" => {
-            if args.len() > 2 {
-                let _ = cmd_volume::run(&args[2]);
-            }
-        }
-        "ptt" => {
-            if args.len() > 2 {
-                cmd_ptt::run(&args[2]);
-            }
-        }
-        _ => {}
-    }
+    Ok(())
 }

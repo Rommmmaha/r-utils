@@ -5,7 +5,6 @@ use std::io::{self, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-
 fn main() {
     let input = env::args()
         .nth(1)
@@ -27,11 +26,8 @@ fn main() {
             let now_instant = Instant::now();
             if last_status.is_some() {
                 let duration = now_instant.duration_since(last_change_instant);
-                let secs = duration.as_secs();
-                let hh = secs / 3600;
-                let mm = (secs % 3600) / 60;
-                let ss = secs % 60;
-                let output = format!("{:02}:{:02}:{:02}", hh, mm, ss);
+                let output =
+                    humantime::format_duration(Duration::from_secs(duration.as_secs())).to_string();
                 if last_status.unwrap() {
                     println!("{}", output.green());
                 } else {

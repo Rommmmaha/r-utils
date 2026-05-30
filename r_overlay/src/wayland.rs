@@ -102,15 +102,11 @@ impl WaylandApp {
                 match pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888) {
                     Ok((buffer, canvas)) => {
                         let data = self.renderer.pixmap.data();
-                        for i in 0..(data.len() / 4) {
-                            let r = data[i * 4];
-                            let g = data[i * 4 + 1];
-                            let b = data[i * 4 + 2];
-                            let a = data[i * 4 + 3];
-                            canvas[i * 4] = b; // B
-                            canvas[i * 4 + 1] = g; // G
-                            canvas[i * 4 + 2] = r; // R
-                            canvas[i * 4 + 3] = a; // A
+                        for (pixel, out) in data.chunks_exact(4).zip(canvas.chunks_exact_mut(4)) {
+                            out[0] = pixel[2];
+                            out[1] = pixel[1];
+                            out[2] = pixel[0];
+                            out[3] = pixel[3];
                         }
                         surface.attach(Some(buffer.wl_buffer()), 0, 0);
                         surface.damage_buffer(0, 0, width, height);

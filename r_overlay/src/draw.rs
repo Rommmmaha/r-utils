@@ -1,58 +1,161 @@
 use crate::network::Command;
 use serde::Deserialize;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
-#[derive(Deserialize, Clone)]
+fn parse_color(s: &str) -> Color {
+    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix("#")).unwrap_or(s);
+    let css = if hex.len() == 8 {
+        // Convert AARRGGBB to #RRGGBBAA
+        format!("#{}{}{}{}", &hex[2..4], &hex[4..6], &hex[6..8], &hex[0..2])
+    } else {
+        format!("#{}", hex)
+    };
+    csscolorparser::parse(&css)
+        .map(|c| Color::from_rgba(c.r as f32, c.g as f32, c.b as f32, c.a as f32).unwrap())
+        .unwrap_or(Color::TRANSPARENT)
+}
+#[derive(Deserialize)]
 pub enum LineSide {
     Left,
     Right,
     Center,
 }
-#[derive(Deserialize, Clone)]
-pub struct PixelParams {
-    pub x: i32,
-    pub y: i32,
-    pub color: String,
-}
-#[derive(Deserialize, Clone)]
-pub struct LineParams {
-    pub x1: i32,
-    pub y1: i32,
-    pub x2: i32,
-    pub y2: i32,
-    pub width: f32,
-    pub side: LineSide,
-    pub color: String,
-}
-#[derive(Deserialize, Clone)]
-pub struct CircleParams {
-    pub x: i32,
-    pub y: i32,
-    pub radius: f32,
-    pub fill_color: String,
-    pub outline_width: f32,
-    pub outline_color: String,
-}
-#[derive(Deserialize, Clone)]
-pub struct RectangleParams {
-    pub x1: i32,
-    pub y1: i32,
-    pub x2: i32,
-    pub y2: i32,
-    pub fill_color: String,
-    pub outline_width: f32,
-    pub outline_color: String,
-}
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize)]
+#[serde(tag = "type")]
 pub enum DrawOperation {
-    Pixel(PixelParams),
-    Line(LineParams),
-    Circle(CircleParams),
-    Rectangle(RectangleParams),
+    Pixel {
+        x: i32,
+        y: i32,
+        color: String,
+    },
+    Line {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        width: f32,
+        side: LineSide,
+        color: String,
+    },
+    Circle {
+        x: i32,
+        y: i32,
+        radius: f32,
+        fill_color: String,
+        outline_width: f32,
+        outline_color: String,
+    },
+    Rectangle {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        fill_color: String,
+        outline_width: f32,
+        outline_color: String,
+    },
+}
+impl DrawOperation {
+    fn render(&self, renderer: &mut Renderer) {
+        match self {
+            DrawOperation::Pixel { x, y, color } => {
+                let color = parse_color(color);
+                let mut paint = Paint::default();
+                paint.set_color(color);
+                if let Some(rect) = Rect::from_xywh(*x as f32, *y as f32, 1.0, 1.0) {
+                    renderer.pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+                }
+            }
+            DrawOperation::Line { x1, y1, x2, y2, width, side, color } => {
+                let x1 = *x1 as f32;
+                let y1 = *y1 as f32;
+                let x2 = *x2 as f32;
+                let y2 = *y2 as f32;
+                let width = *width;
+                let color = parse_color(color);
+                let dx = x2 - x1;
+                let dy = y2 - y1;
+                let length = (dx * dx + dy * dy).sqrt();
+                if length == 0.0 {
+                    return;
+                }
+                let nx = -dy / length;
+                let ny = dx / length;
+                let (offset_x, offset_y) = match side {
+                    LineSide::Center => (0.0, 0.0),
+                    LineSide::Left => (nx * (width / 2.0), ny * (width / 2.0)),
+                    LineSide::Right => (-nx * (width / 2.0), -ny * (width / 2.0)),
+                };
+                let start_x = x1 + offset_x;
+                let start_y = y1 + offset_y;
+                let end_x = x2 + offset_x;
+                let end_y = y2 + offset_y;
+                let mut path = PathBuilder::new();
+                path.move_to(start_x, start_y);
+                path.line_to(end_x, end_y);
+                if let Some(path) = path.finish() {
+                    let mut paint = Paint::default();
+                    paint.set_color(color);
+                    let mut stroke = Stroke::default();
+                    stroke.width = width;
+                    renderer.pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                }
+            }
+            DrawOperation::Circle { x, y, radius, fill_color, outline_width, outline_color } => {
+                let cx = *x as f32;
+                let cy = *y as f32;
+                let radius = *radius;
+                let fill_color = parse_color(fill_color);
+                let outline_color = parse_color(outline_color);
+                let outline_width = *outline_width;
+                let mut path = PathBuilder::new();
+                path.push_circle(cx, cy, radius);
+                if let Some(path) = path.finish() {
+                    let mut fill_paint = Paint::default();
+                    fill_paint.set_color(fill_color);
+                    renderer.pixmap.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+                    if outline_width > 0.0 {
+                        let mut stroke_paint = Paint::default();
+                        stroke_paint.set_color(outline_color);
+                        let mut stroke = Stroke::default();
+                        stroke.width = outline_width;
+                        renderer.pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+                    }
+                }
+            }
+            DrawOperation::Rectangle { x1, y1, x2, y2, fill_color, outline_width, outline_color } => {
+                let x1 = *x1 as f32;
+                let y1 = *y1 as f32;
+                let x2 = *x2 as f32;
+                let y2 = *y2 as f32;
+                let width = x2 - x1;
+                let height = y2 - y1;
+                let fill_color = parse_color(fill_color);
+                let outline_color = parse_color(outline_color);
+                let outline_width = *outline_width;
+                if let Some(rect) = Rect::from_xywh(x1, y1, width, height) {
+                    let mut pb = PathBuilder::new();
+                    pb.push_rect(rect);
+                    let path = pb.finish().unwrap();
+                    let mut fill_paint = Paint::default();
+                    fill_paint.set_color(fill_color);
+                    renderer.pixmap.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+                    if outline_width > 0.0 {
+                        let mut stroke_paint = Paint::default();
+                        stroke_paint.set_color(outline_color);
+                        let mut stroke = Stroke::default();
+                        stroke.width = outline_width;
+                        renderer.pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+                    }
+                }
+            }
+        }
+    }
 }
 pub struct Layer {
-    pub operations: Vec<DrawOperation>,
+    pub operations: SmallVec<[DrawOperation; 8]>,
     pub expiry: Option<Instant>,
 }
 pub struct CanvasState {
@@ -72,7 +175,7 @@ impl CanvasState {
         self.layers.insert(
             layer_id,
             Layer {
-                operations: command.operations,
+                operations: command.operations.into(),
                 expiry,
             },
         );
@@ -91,16 +194,8 @@ impl CanvasState {
         sorted_layers.sort_by_key(|(z, _)| *z);
         for (_, layer) in sorted_layers {
             for op in &layer.operations {
-                self.draw_operation(renderer, op);
+                op.render(renderer);
             }
-        }
-    }
-    pub fn draw_operation(&self, renderer: &mut Renderer, op: &DrawOperation) {
-        match op {
-            DrawOperation::Pixel(p) => renderer.draw_pixel(p.clone()),
-            DrawOperation::Line(p) => renderer.draw_line(p.clone()),
-            DrawOperation::Circle(p) => renderer.draw_circle(p.clone()),
-            DrawOperation::Rectangle(p) => renderer.draw_rectangle(p.clone()),
         }
     }
 }
@@ -111,180 +206,5 @@ impl Renderer {
     pub fn new(width: u32, height: u32) -> Self {
         let pixmap = Pixmap::new(width, height).expect("Failed to create pixmap");
         Self { pixmap }
-    }
-    fn parse_color(hex: &str) -> Color {
-        let hex = hex
-            .strip_prefix("0x")
-            .or_else(|| hex.strip_prefix("#"))
-            .unwrap_or(hex);
-        let (r, g, b, a) = if hex.len() == 8 {
-            let a = u8::from_str_radix(&hex[0..2], 16).unwrap_or(255);
-            let r = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&hex[6..8], 16).unwrap_or(0);
-            (r, g, b, a)
-        } else if hex.len() == 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-            (r, g, b, 255)
-        } else {
-            (0, 0, 0, 255)
-        };
-        let a_f = a as f32 / 255.0;
-        Color::from_rgba(
-            (r as f32 / 255.0) * a_f,
-            (g as f32 / 255.0) * a_f,
-            (b as f32 / 255.0) * a_f,
-            a_f,
-        )
-        .unwrap()
-    }
-    pub fn draw_pixel(&mut self, params: PixelParams) {
-        let x = params.x as f32;
-        let y = params.y as f32;
-        let color = Self::parse_color(&params.color);
-        let mut paint = Paint::default();
-        paint.set_color(color);
-        if let Some(rect) = Rect::from_xywh(x, y, 1.0, 1.0) {
-            self.pixmap
-                .fill_rect(rect, &paint, Transform::identity(), None);
-        }
-    }
-    pub fn draw_line(&mut self, params: LineParams) {
-        let x1 = params.x1 as f32;
-        let y1 = params.y1 as f32;
-        let x2 = params.x2 as f32;
-        let y2 = params.y2 as f32;
-        let width = params.width;
-        let color = Self::parse_color(&params.color);
-        let dx = x2 - x1;
-        let dy = y2 - y1;
-        let length = (dx * dx + dy * dy).sqrt();
-        if length == 0.0 {
-            return;
-        }
-        let nx = -dy / length;
-        let ny = dx / length;
-        let (offset_x, offset_y) = match params.side {
-            LineSide::Center => (0.0, 0.0),
-            LineSide::Left => (nx * (width / 2.0), ny * (width / 2.0)),
-            LineSide::Right => (-nx * (width / 2.0), -ny * (width / 2.0)),
-        };
-        let start_x = x1 + offset_x;
-        let start_y = y1 + offset_y;
-        let end_x = x2 + offset_x;
-        let end_y = y2 + offset_y;
-        let mut path = PathBuilder::new();
-        path.move_to(start_x, start_y);
-        path.line_to(end_x, end_y);
-        if let Some(path) = path.finish() {
-            let mut paint = Paint::default();
-            paint.set_color(color);
-            let mut stroke = Stroke::default();
-            stroke.width = width;
-            self.pixmap
-                .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-        }
-    }
-    pub fn draw_circle(&mut self, params: CircleParams) {
-        let cx = params.x as f32;
-        let cy = params.y as f32;
-        let radius = params.radius;
-        let fill_color = Self::parse_color(&params.fill_color);
-        let outline_color = Self::parse_color(&params.outline_color);
-        let outline_width = params.outline_width;
-        let mut path = PathBuilder::new();
-        path.push_circle(cx, cy, radius);
-        if let Some(path) = path.finish() {
-            let mut paint = Paint::default();
-            paint.set_color(outline_color);
-            let mut stroke = Stroke::default();
-            stroke.width = outline_width;
-            self.pixmap
-                .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-        }
-        let inner_radius = radius - outline_width;
-        if inner_radius > 0.0 {
-            let mut inner_path = PathBuilder::new();
-            inner_path.push_circle(cx, cy, inner_radius);
-            if let Some(inner_path) = inner_path.finish() {
-                let mut fill_paint = Paint::default();
-                fill_paint.set_color(fill_color);
-                self.pixmap.fill_path(
-                    &inner_path,
-                    &fill_paint,
-                    FillRule::Winding,
-                    Transform::identity(),
-                    None,
-                );
-            }
-        }
-    }
-    pub fn draw_rectangle(&mut self, params: RectangleParams) {
-        let x1 = params.x1 as f32;
-        let y1 = params.y1 as f32;
-        let x2 = params.x2 as f32;
-        let y2 = params.y2 as f32;
-        let width = x2 - x1;
-        let height = y2 - y1;
-        let fill_color = Self::parse_color(&params.fill_color);
-        let outline_color = Self::parse_color(&params.outline_color);
-        let outline_width = params.outline_width;
-        // Draw fill on the inner area
-        let inner_x = x1 + outline_width;
-        let inner_y = y1 + outline_width;
-        let inner_width = width - 2.0 * outline_width;
-        let inner_height = height - 2.0 * outline_width;
-        if inner_width > 0.0 && inner_height > 0.0 {
-            if let Some(inner_rect) = Rect::from_xywh(inner_x, inner_y, inner_width, inner_height) {
-                let mut fill_paint = Paint::default();
-                fill_paint.set_color(fill_color);
-                self.pixmap
-                    .fill_rect(inner_rect, &fill_paint, Transform::identity(), None);
-            }
-        }
-        // Draw outline as filled border strips inside the rectangle
-        let mut outline_paint = Paint::default();
-        outline_paint.set_color(outline_color);
-        // Left border
-        if outline_width > 0.0 {
-            if let Some(left_rect) = Rect::from_xywh(x1, y1, outline_width, height) {
-                self.pixmap
-                    .fill_rect(left_rect, &outline_paint, Transform::identity(), None);
-            }
-        }
-        // Right border
-        if outline_width > 0.0 {
-            if let Some(right_rect) = Rect::from_xywh(x2 - outline_width, y1, outline_width, height)
-            {
-                self.pixmap
-                    .fill_rect(right_rect, &outline_paint, Transform::identity(), None);
-            }
-        }
-        // Top border (excluding corners already drawn)
-        if outline_width > 0.0 {
-            if let Some(top_rect) = Rect::from_xywh(
-                x1 + outline_width,
-                y1,
-                width - 2.0 * outline_width,
-                outline_width,
-            ) {
-                self.pixmap
-                    .fill_rect(top_rect, &outline_paint, Transform::identity(), None);
-            }
-        }
-        // Bottom border (excluding corners already drawn)
-        if outline_width > 0.0 {
-            if let Some(bottom_rect) = Rect::from_xywh(
-                x1 + outline_width,
-                y2 - outline_width,
-                width - 2.0 * outline_width,
-                outline_width,
-            ) {
-                self.pixmap
-                    .fill_rect(bottom_rect, &outline_paint, Transform::identity(), None);
-            }
-        }
     }
 }

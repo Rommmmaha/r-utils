@@ -1,18 +1,31 @@
 use crate::draw::DrawOperation;
 use anyhow::Result;
-use crossbeam::channel::Sender;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc;
 #[derive(Deserialize)]
 pub struct Command {
     pub layer: Option<i32>,
     pub timeout_ms: Option<u64>,
     pub operations: Vec<DrawOperation>,
 }
+fn handle_command(json: &str, sender: &mpsc::UnboundedSender<Command>) {
+    match serde_json::from_str::<Command>(json) {
+        Ok(cmd) => {
+            log::info!("Parsed command successfully, sending to main thread");
+            if let Err(e) = sender.send(cmd) {
+                log::error!("Failed to send command: {}", e);
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to parse JSON: {}", e);
+        }
+    }
+}
 pub async fn start_listeners(
     port: Option<u16>,
     unix_path: Option<&str>,
-    sender: Sender<Command>,
+    sender: mpsc::UnboundedSender<Command>,
 ) -> Result<()> {
     let mut handles = vec![];
     if let Some(port) = port {
@@ -27,17 +40,7 @@ pub async fn start_listeners(
                 log::info!("Received {} bytes from {}", len, addr);
                 let json = std::str::from_utf8(&buf[..len])?;
                 log::debug!("JSON: {}", json);
-                match serde_json::from_str::<Command>(json) {
-                    Ok(cmd) => {
-                        log::info!("Parsed command successfully, sending to main thread");
-                        if let Err(e) = sender.send(cmd) {
-                            log::error!("Failed to send command: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to parse JSON: {}", e);
-                    }
-                }
+                handle_command(json, &sender);
             }
             #[allow(unreachable_code)]
             Ok::<(), anyhow::Error>(())
@@ -65,17 +68,7 @@ pub async fn start_listeners(
                     log::info!("Read {} bytes from Unix socket", buf.len());
                     let json = std::str::from_utf8(&buf)?;
                     log::debug!("JSON: {}", json);
-                    match serde_json::from_str::<Command>(json) {
-                        Ok(cmd) => {
-                            log::info!("Parsed command successfully, sending to main thread");
-                            if let Err(e) = sender.send(cmd) {
-                                log::error!("Failed to send command: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to parse JSON: {}", e);
-                        }
-                    }
+                    handle_command(json, &sender);
                     Ok::<(), anyhow::Error>(())
                 });
             }

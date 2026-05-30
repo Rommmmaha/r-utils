@@ -3,16 +3,17 @@ name = "r_overlay"
 version = "0.1.0"
 edition = "2024"
 [dependencies]
-smithay-client-toolkit = "0.20"
-wayland-client = "0.31"
-calloop-wayland-source = "0.4"
-tiny-skia = "0.12"
-tokio = { version = "1.52", features = ["full"] }
-crossbeam = "0.8"
+anyhow = { workspace = true }
 calloop = "0.14"
+calloop-wayland-source = "0.4"
+clap = { workspace = true }
+csscolorparser = "0.7"
+env_logger = "0.11"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.6", features = ["derive"] }
-anyhow = "1.0"
-log = "0.4"
-env_logger = "0.11"
+smallvec = "1"
+smithay-client-toolkit = "0.20"
+tiny-skia = "0.12"
+tokio = { version = "1.52", features = ["full"] }
+wayland-client = "0.31"

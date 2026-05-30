@@ -1,4 +1,5 @@
 use crate::utils::{self, PwNode};
+use anyhow::Context;
 use std::collections::HashSet;
 use std::process::{Command, Stdio};
 fn get_physical_sink_names(nodes: &[PwNode]) -> Vec<String> {
@@ -70,14 +71,11 @@ fn set_link(source: &str, sink: &str, unlink: bool) {
         .stderr(Stdio::null())
         .spawn();
 }
-pub fn run() {
-    let nodes = match utils::get_all_sinks() {
-        Some(n) => n,
-        None => return,
-    };
+pub fn run() -> anyhow::Result<()> {
+    let nodes = utils::get_all_sinks().context("Failed to get sinks")?;
     let physical = get_physical_sink_names(&nodes);
     if physical.is_empty() {
-        return;
+        return Ok(());
     }
     let active_links = get_active_links(utils::VIRTUAL_SINK_TO_CYCLE, &physical);
     let mut next_index = 0;
@@ -98,4 +96,5 @@ pub fn run() {
     }
     set_link(utils::VIRTUAL_SINK_TO_CYCLE, next_sink, false);
     utils::exec_with_stdin("pw-play", &["-"], utils::NOTIFY_WAV);
+    Ok(())
 }

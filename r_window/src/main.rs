@@ -13,7 +13,7 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
             let window_attributes = Window::default_attributes()
-                .with_title("Black Window")
+                .with_title("r_window")
                 .with_inner_size(winit::dpi::LogicalSize::new(200.0, 200.0));
             let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
             let context = softbuffer::Context::new(window.clone()).unwrap();

@@ -13,29 +13,26 @@ pub struct OverlayCommand {
     pub operations: Vec<DrawOperation>,
 }
 #[derive(Serialize)]
+#[serde(tag = "type")]
 pub enum DrawOperation {
-    Rectangle(RectangleParams),
-    Line(LineParams),
-}
-#[derive(Serialize)]
-pub struct RectangleParams {
-    pub x1: i32,
-    pub y1: i32,
-    pub x2: i32,
-    pub y2: i32,
-    pub fill_color: String,
-    pub outline_width: f32,
-    pub outline_color: String,
-}
-#[derive(Serialize)]
-pub struct LineParams {
-    pub x1: i32,
-    pub y1: i32,
-    pub x2: i32,
-    pub y2: i32,
-    pub width: f32,
-    pub side: LineSide,
-    pub color: String,
+    Rectangle {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        fill_color: String,
+        outline_width: f32,
+        outline_color: String,
+    },
+    Line {
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        width: f32,
+        side: LineSide,
+        color: String,
+    },
 }
 #[derive(Serialize)]
 #[allow(dead_code)]

@@ -7,8 +7,8 @@ use crate::wayland::WaylandApp;
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use clap::Parser;
-use crossbeam::channel::Receiver;
 use tokio::runtime::Builder as RuntimeBuilder;
+use tokio::sync::mpsc;
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
@@ -19,7 +19,7 @@ struct Args {
 }
 struct AppData {
     canvas: CanvasState,
-    receiver: Receiver<Command>,
+    receiver: mpsc::UnboundedReceiver<Command>,
     app: WaylandApp,
     frame_count: u64,
     dirty: bool,
@@ -36,7 +36,7 @@ fn main() {
     let qh = event_queue.handle();
     app.create_layer_surface(&qh);
     log::info!("Layer surface created");
-    let (sender, receiver) = crossbeam::channel::unbounded();
+    let (sender, receiver) = mpsc::unbounded_channel();
     let canvas = CanvasState::new();
     let rt = RuntimeBuilder::new_multi_thread()
         .enable_all()
