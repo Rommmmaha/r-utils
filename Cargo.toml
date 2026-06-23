@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["r_window", "r_multitool", "r_netstatus", "r_overlay"]
+members = ["r_window", "r_multitool", "r_netstatus", "r_overlay", "r_stt"]
 
 [workspace.dependencies]
 anyhow = "1.0"
