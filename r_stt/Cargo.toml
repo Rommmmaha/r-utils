@@ -1,9 +1,9 @@
 [package]
-name = "r_stt"
-version = "0.1.0"
-edition = "2024"
+  name = "r_stt"
+  version = "0.1.0"
+  edition = "2024"
 [dependencies]
-anyhow = { workspace = true }
-async-openai = "0.27"
-nix = { version = "0.29", features = ["signal"] }
-tokio = { version = "1", features = ["full"] }
+  anyhow = { workspace = true }
+  async-openai = "0.27"
+  nix = { version = "0.29", features = ["signal"] }
+  tokio = { version = "1", features = ["full"] }

@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 fn parse_color(s: &str) -> Color {
-    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix("#")).unwrap_or(s);
+    let hex = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("#"))
+        .unwrap_or(s);
     let css = if hex.len() == 8 {
         // Convert AARRGGBB to #RRGGBBAA
         format!("#{}{}{}{}", &hex[2..4], &hex[4..6], &hex[6..8], &hex[0..2])
@@ -65,10 +68,20 @@ impl DrawOperation {
                 let mut paint = Paint::default();
                 paint.set_color(color);
                 if let Some(rect) = Rect::from_xywh(*x as f32, *y as f32, 1.0, 1.0) {
-                    renderer.pixmap.fill_rect(rect, &paint, Transform::identity(), None);
+                    renderer
+                        .pixmap
+                        .fill_rect(rect, &paint, Transform::identity(), None);
                 }
             }
-            DrawOperation::Line { x1, y1, x2, y2, width, side, color } => {
+            DrawOperation::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                width,
+                side,
+                color,
+            } => {
                 let x1 = *x1 as f32;
                 let y1 = *y1 as f32;
                 let x2 = *x2 as f32;
@@ -100,10 +113,23 @@ impl DrawOperation {
                     paint.set_color(color);
                     let mut stroke = Stroke::default();
                     stroke.width = width;
-                    renderer.pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                    renderer.pixmap.stroke_path(
+                        &path,
+                        &paint,
+                        &stroke,
+                        Transform::identity(),
+                        None,
+                    );
                 }
             }
-            DrawOperation::Circle { x, y, radius, fill_color, outline_width, outline_color } => {
+            DrawOperation::Circle {
+                x,
+                y,
+                radius,
+                fill_color,
+                outline_width,
+                outline_color,
+            } => {
                 let cx = *x as f32;
                 let cy = *y as f32;
                 let radius = *radius;
@@ -115,17 +141,37 @@ impl DrawOperation {
                 if let Some(path) = path.finish() {
                     let mut fill_paint = Paint::default();
                     fill_paint.set_color(fill_color);
-                    renderer.pixmap.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+                    renderer.pixmap.fill_path(
+                        &path,
+                        &fill_paint,
+                        FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
                     if outline_width > 0.0 {
                         let mut stroke_paint = Paint::default();
                         stroke_paint.set_color(outline_color);
                         let mut stroke = Stroke::default();
                         stroke.width = outline_width;
-                        renderer.pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+                        renderer.pixmap.stroke_path(
+                            &path,
+                            &stroke_paint,
+                            &stroke,
+                            Transform::identity(),
+                            None,
+                        );
                     }
                 }
             }
-            DrawOperation::Rectangle { x1, y1, x2, y2, fill_color, outline_width, outline_color } => {
+            DrawOperation::Rectangle {
+                x1,
+                y1,
+                x2,
+                y2,
+                fill_color,
+                outline_width,
+                outline_color,
+            } => {
                 let x1 = *x1 as f32;
                 let y1 = *y1 as f32;
                 let x2 = *x2 as f32;
@@ -141,13 +187,25 @@ impl DrawOperation {
                     let path = pb.finish().unwrap();
                     let mut fill_paint = Paint::default();
                     fill_paint.set_color(fill_color);
-                    renderer.pixmap.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+                    renderer.pixmap.fill_path(
+                        &path,
+                        &fill_paint,
+                        FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
                     if outline_width > 0.0 {
                         let mut stroke_paint = Paint::default();
                         stroke_paint.set_color(outline_color);
                         let mut stroke = Stroke::default();
                         stroke.width = outline_width;
-                        renderer.pixmap.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+                        renderer.pixmap.stroke_path(
+                            &path,
+                            &stroke_paint,
+                            &stroke,
+                            Transform::identity(),
+                            None,
+                        );
                     }
                 }
             }

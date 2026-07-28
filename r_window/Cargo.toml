@@ -1,7 +1,7 @@
 [package]
-name = "r_window"
-version = "0.1.0"
-edition = "2024"
+  name = "r_window"
+  version = "0.1.0"
+  edition = "2024"
 [dependencies]
-softbuffer = "0.4"
-winit = "0.30"
+  softbuffer = "0.4"
+  winit = "0.30"

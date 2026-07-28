@@ -1,3 +1,4 @@
+use regex::Regex;
 use std::collections::HashSet;
 use std::env;
 use std::error::Error;
@@ -6,7 +7,6 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use regex::Regex;
 struct ImgJob {
     idx: usize,
     id: String,
