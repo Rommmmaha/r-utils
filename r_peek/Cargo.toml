@@ -1,0 +1,11 @@
+[package]
+  name = "r_peek"
+  version = "0.1.0"
+  edition = "2024"
+[dependencies]
+anyhow = { workspace = true }
+ashpd = { version = "0.13.13", features = ["screencast"] }
+lamco-pipewire = "0.6"
+softbuffer = "0.4"
+tokio = { version = "1.53.1", features = ["rt-multi-thread"] }
+winit = "0.30"

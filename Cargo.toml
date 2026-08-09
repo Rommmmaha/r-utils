@@ -1,6 +1,6 @@
 [workspace]
   resolver = "3"
-  members = ["r_cliphist-rofi", "r_env", "r_multitool", "r_netstatus", "r_overlay", "r_stt", "r_window"]
+  members = ["r_cliphist-rofi", "r_env", "r_multitool", "r_netstatus", "r_overlay", "r_peek", "r_stt", "r_window"]
   [workspace.dependencies]
     anyhow = "1.0"
     clap = { version = "4.6", features = ["derive"] }
