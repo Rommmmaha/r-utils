@@ -4,7 +4,7 @@ use lamco_pipewire::{PipeWireThreadCommand, PipeWireThreadManager, StreamConfig}
 use std::num::NonZeroU32;
 use std::os::fd::IntoRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -44,9 +44,10 @@ struct App {
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     proxy: EventLoopProxy<()>,
     frame: Arc<Mutex<Option<Frame>>>,
+    logo: Option<(u32, u32, Vec<u8>)>,
     requesting: Arc<AtomicBool>,
     streaming: Arc<AtomicBool>,
-    stop: Arc<AtomicBool>,
+    stop_slot: Arc<Mutex<Option<Arc<AtomicBool>>>>,
     cursor: (f64, f64),
     selecting: Option<(f64, f64)>,
     crop: [f32; 4],
@@ -67,7 +68,8 @@ impl App {
         surface.resize(nw, nh).unwrap();
         let mut buffer = surface.buffer_mut().unwrap();
         buffer.fill(0);
-        if let Some(f) = self.frame.lock().unwrap().as_ref() {
+        let frame = self.frame.lock().unwrap();
+        if let Some(f) = frame.as_ref() {
             let crop = crop_region(f.w, f.h, self.crop);
             let dest = dest_rect(w, h, crop.2, crop.3, self.mode);
             let src = Source {
@@ -77,7 +79,25 @@ impl App {
                 stride: f.stride,
             };
             draw_stretch(&mut buffer, w, dest, src, crop);
+        } else if let Some((lw, lh, ldata)) = &self.logo {
+            let (_, _, dw, dh) = dest_rect(w, h, *lw as f32, *lh as f32, Mode::Fit);
+            let (dw, dh) = ((dw / 3).max(1), (dh / 3).max(1));
+            let dest = ((w - dw) / 2, (h - dh) / 2, dw, dh);
+            let src = Source {
+                data: ldata,
+                w: *lw,
+                h: *lh,
+                stride: *lw * 4,
+            };
+            draw_stretch(
+                &mut buffer,
+                w,
+                dest,
+                src,
+                (0.0, 0.0, *lw as f32, *lh as f32),
+            );
         }
+        drop(frame);
         if let Some(s) = self.selecting {
             draw_select(&mut buffer, w, h, s, self.cursor);
         }
@@ -114,7 +134,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
                 PhysicalKey::Code(KeyCode::Escape) => {
-                    self.stop.store(true, Ordering::SeqCst);
+                    if let Some(s) = self.stop_slot.lock().unwrap().as_ref() {
+                        s.store(true, Ordering::SeqCst);
+                    }
                     if self.streaming.swap(false, Ordering::SeqCst) {
                         *self.frame.lock().unwrap() = None;
                     }
@@ -149,7 +171,7 @@ impl ApplicationHandler for App {
                                     self.frame.clone(),
                                     self.requesting.clone(),
                                     self.streaming.clone(),
-                                    self.stop.clone(),
+                                    self.stop_slot.clone(),
                                     self.proxy.clone(),
                                 );
                             }
@@ -298,6 +320,22 @@ fn draw_stretch(
     let (dx, dy, dw, dh) = dest;
     let (ox, oy, cw, ch) = crop;
     let (sw, sh, stride) = (src.w, src.h, src.stride);
+    if cw == dw as f32 && ch == dh as f32 && cw >= 1.0 && ch >= 1.0 {
+        let (cw, ch) = (cw as u32, ch as u32);
+        let (ox, oy) = (ox as u32, oy as u32);
+        for y in 0..ch {
+            let src_off = ((oy + y) * stride + ox * 4) as usize;
+            let src_row = &src.data[src_off..src_off + (cw * 4) as usize];
+            let dst_off = ((dy + y) * buf_w + dx) as usize;
+            for (d, s) in dst[dst_off..dst_off + cw as usize]
+                .iter_mut()
+                .zip(src_row.chunks_exact(4))
+            {
+                *d = u32::from_le_bytes([s[0], s[1], s[2], 0]);
+            }
+        }
+        return;
+    }
     for y in 0..dh {
         let sy = oy + (y as f32 + 0.5) * ch / dh as f32;
         let y0 = sy as u32;
@@ -341,24 +379,26 @@ fn bilerp(c00: u32, c10: u32, c01: u32, c11: u32, fx: f32, fy: f32) -> u32 {
     let b = blend(top.2, bot.2, fy);
     (r << 16) | (g << 8) | b
 }
+fn rt() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| tokio::runtime::Runtime::new().expect("failed to create tokio runtime"))
+}
 fn start_portal(
     frame: Arc<Mutex<Option<Frame>>>,
     requesting: Arc<AtomicBool>,
     streaming: Arc<AtomicBool>,
-    stop: Arc<AtomicBool>,
+    stop_slot: Arc<Mutex<Option<Arc<AtomicBool>>>>,
     proxy: EventLoopProxy<()>,
 ) {
+    let stop = Arc::new(AtomicBool::new(false));
+    *stop_slot.lock().unwrap() = Some(stop.clone());
     std::thread::spawn(move || {
-        stop.store(false, Ordering::SeqCst);
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("tokio runtime failed: {e}");
-                requesting.store(false, Ordering::SeqCst);
-                return;
-            }
-        };
-        let result = rt.block_on(async {
+        // The runtime is process-lifetime: zbus spawns its connection tasks
+        // via tokio::spawn onto whatever runtime is current when the global
+        // session connection is first created. Dropping it kills zbus's tasks
+        // and every later Screencast::new() hangs forever on the cached
+        // connection.
+        let result = rt().handle().block_on(async {
             let portal = Screencast::new().await?;
             let session = portal.create_session(Default::default()).await?;
             portal
@@ -391,8 +431,9 @@ fn start_portal(
             Ok((node_id, size, fd, portal, session)) => {
                 streaming.store(true, Ordering::SeqCst);
                 requesting.store(false, Ordering::SeqCst);
-                let _keep_alive = (rt, portal, session);
+                let _keep_alive = (portal, session);
                 run_capture(node_id, size, fd, proxy, frame, stop);
+                streaming.store(false, Ordering::SeqCst);
             }
             Err(e) => {
                 eprintln!("capture failed: {e}");
@@ -410,6 +451,14 @@ fn run_capture(
     stop: Arc<AtomicBool>,
 ) {
     let fd_raw = fd.into_raw_fd();
+    // ponytail: lamco calls pipewire::deinit() on every pw-thread exit, but
+    // pipewire::init() is once-per-process (OnceLock), so a second session
+    // runs against a deinited library and its MainLoopBox fails. pw_init is
+    // refcounted in C, so re-initing keeps the library alive. Remove once
+    // lamco stops calling deinit per thread.
+    unsafe {
+        pipewire_sys::pw_init(std::ptr::null_mut(), std::ptr::null_mut());
+    }
     let mut tm = match PipeWireThreadManager::new(fd_raw) {
         Ok(t) => t,
         Err(e) => {
@@ -463,7 +512,33 @@ fn run_capture(
         }
         proxy.send_event(()).ok();
     }
+    *frame.lock().unwrap() = None;
+    proxy.send_event(()).ok();
     let _ = tm.shutdown();
+}
+fn load_logo() -> Option<(u32, u32, Vec<u8>)> {
+    let mut decoder =
+        png::Decoder::new(std::io::Cursor::new(include_bytes!("../assets/r_peek.png")));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let (w, h) = (info.width, info.height);
+    let mut bgra = Vec::with_capacity((w * h * 4) as usize);
+    match info.color_type {
+        png::ColorType::Rgba => {
+            for px in buf.chunks_exact(4) {
+                bgra.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
+            }
+        }
+        png::ColorType::Rgb => {
+            for px in buf.chunks_exact(3) {
+                bgra.extend_from_slice(&[px[2], px[1], px[0], 255]);
+            }
+        }
+        _ => return None,
+    }
+    Some((w, h, bgra))
 }
 fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -473,9 +548,10 @@ fn main() {
         surface: None,
         proxy: event_loop.create_proxy(),
         frame: Arc::new(Mutex::new(None)),
+        logo: load_logo(),
         requesting: Arc::new(AtomicBool::new(false)),
         streaming: Arc::new(AtomicBool::new(false)),
-        stop: Arc::new(AtomicBool::new(false)),
+        stop_slot: Arc::new(Mutex::new(None)),
         cursor: (0.0, 0.0),
         selecting: None,
         crop: [0.0; 4],

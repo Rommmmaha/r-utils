@@ -2577,6 +2577,8 @@ dependencies = [
  "anyhow",
  "ashpd",
  "lamco-pipewire",
+ "pipewire-sys",
+ "png",
  "softbuffer",
  "tokio",
  "winit",
