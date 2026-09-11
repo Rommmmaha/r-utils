@@ -5,6 +5,23 @@ use std::process::{Command, Stdio};
 pub const VIRTUAL_SINK_TO_CYCLE: &str = "X1";
 pub const IGNORED_SINKS: &[&str] = &["X1", "X2"];
 pub const PTT_UDP_ADDR: &str = "127.0.0.1:7435";
+pub const MIC_OPEN_VOL: &str = "0.4";
+const MIC_OPEN_LVL: f32 = 0.4;
+const VOL_EPS: f32 = 0.01;
+/// First holder wins; the guard must stay alive to keep the lock.
+pub fn take_singleton(name: &str) -> Option<nix::fcntl::Flock<std::fs::File>> {
+    let path = format!("/tmp/{name}.lock");
+    let f = std::fs::File::create(&path).ok()?;
+    nix::fcntl::Flock::lock(f, nix::fcntl::FlockArg::LockExclusiveNonblock).ok()
+}
+pub const SESSION_PID_FILE: &str = "/tmp/r_multitool_rec.pid";
+/// Claim the recorder session: lock + advertise pid for `mute` to signal.
+/// Stale pid files are harmless (mute verifies cmdline, ESRCH-safe).
+pub fn claim_session() -> Option<nix::fcntl::Flock<std::fs::File>> {
+    let lock = take_singleton("r_multitool_rec")?;
+    let _ = std::fs::write(SESSION_PID_FILE, std::process::id().to_string());
+    Some(lock)
+}
 pub const NOTIFY_WAV: &[u8] = include_bytes!("../assets/notify.wav");
 #[derive(Serialize)]
 pub struct OverlayCommand {
@@ -94,6 +111,41 @@ pub fn send_overlay_command(command: &OverlayCommand) {
     if let Ok(json) = serde_json::to_string(command) {
         if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
             let _ = socket.send_to(json.as_bytes(), PTT_UDP_ADDR);
+        }
+    }
+}
+pub fn mic_volume() -> Option<f32> {
+    let out = exec_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SOURCE@"])?;
+    // "Volume: 0.40" (optionally followed by " [MUTED]")
+    out.split_whitespace().nth(1)?.parse().ok()
+}
+pub fn set_mic_volume(vol: &str) {
+    exec_silent("wpctl", &["set-volume", "@DEFAULT_AUDIO_SOURCE@", vol]);
+}
+/// SIGTERM a spawned child (timeout(1) forwards it) and reap it.
+pub async fn stop_child(child: &mut tokio::process::Child) {
+    use nix::{
+        sys::signal::{Signal, kill},
+        unistd::Pid,
+    };
+    if let Some(id) = child.id() {
+        let _ = kill(Pid::from_raw(id as i32), Signal::SIGTERM);
+    }
+    let _ = child.wait().await;
+}
+/// Resolves once the mic leaves the recording level after having reached it.
+/// The latch avoids tripping before our own unmute has applied. No baseline
+/// sampling, so there is nothing to race with a mute still in flight.
+pub async fn wait_recording_end() {
+    let mut armed = false;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        if let Some(v) = mic_volume() {
+            if (v - MIC_OPEN_LVL).abs() <= VOL_EPS {
+                armed = true;
+            } else if armed {
+                return;
+            }
         }
     }
 }

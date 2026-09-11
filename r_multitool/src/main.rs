@@ -1,7 +1,10 @@
 use clap::Parser;
 mod cmd_cycle;
+mod cmd_mute;
 mod cmd_ptt;
+mod cmd_stt;
 mod cmd_volume;
+mod overlay;
 mod utils;
 #[derive(Parser)]
 struct Cli {
@@ -14,18 +17,18 @@ enum Commands {
     Vol {
         amount: String,
     },
-    Ptt {
-        state: String,
-        #[arg(long)]
-        color: Option<String>,
-    },
+    Ptt,
+    Mute,
+    Stt,
 }
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Cycle => cmd_cycle::run()?,
         Commands::Vol { amount } => cmd_volume::run(&amount)?,
-        Commands::Ptt { state, color } => cmd_ptt::run(&state, color)?,
+        Commands::Ptt => cmd_ptt::run()?,
+        Commands::Mute => cmd_mute::run()?,
+        Commands::Stt => cmd_stt::run()?,
     }
     Ok(())
 }

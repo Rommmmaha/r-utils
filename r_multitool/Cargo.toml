@@ -4,6 +4,14 @@
   edition = "2024"
 [dependencies]
   anyhow = { workspace = true }
+  async-openai = "0.27"
+  calloop = "0.14"
+  calloop-wayland-source = "0.4"
   clap = { workspace = true }
+  nix = { version = "0.29", features = ["signal", "fs"] }
   serde = { version = "1.0", features = ["derive"] }
   serde_json = "1.0"
+  smithay-client-toolkit = "0.20"
+  tiny-skia = "0.12"
+  tokio = { version = "1", features = ["full"] }
+  wayland-client = "0.31"
