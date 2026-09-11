@@ -451,12 +451,14 @@ fn draw_pill(
     }
 }
 
-// Mirrors quickshell Theme.qml: black@50% cards, white@25% hairlines,
-// accentCritical red while recording, accentLow blue while transcribing.
+// Mirrors NotificationCard.qml: critical/low cards tint cardBg with the
+// accent at 25% intensity @ 0.5 alpha and paint the border in the accent at
+// 0.75 alpha; normal cards stay black@50% with a white@25% hairline.
+// Recording ~ critical, transcribing ~ low, ptt badge ~ normal.
 fn phase_theme(phase: Phase) -> ((u8, u8, u8, u8), (u8, u8, u8, u8)) {
     match phase {
-        Phase::Record => ((0, 0, 0, 128), (255, 107, 107, 255)),
-        Phase::Transcribing => ((0, 0, 0, 128), (90, 169, 230, 255)),
+        Phase::Record => ((64, 27, 27, 128), (255, 107, 107, 191)),
+        Phase::Transcribing => ((22, 42, 58, 128), (90, 169, 230, 191)),
         Phase::MicOn => ((0, 0, 0, 128), (255, 255, 255, 64)),
     }
 }
@@ -682,14 +684,14 @@ mod tests {
 
     #[test]
     fn stt_pill_themed() {
-        // Mirrors quickshell Theme.qml tokens.
+        // Mirrors NotificationCard.qml cardBg/borderAlpha formulas.
         assert_eq!(
             phase_theme(Phase::Record),
-            ((0, 0, 0, 128), (255, 107, 107, 255))
+            ((64, 27, 27, 128), (255, 107, 107, 191))
         );
         assert_eq!(
             phase_theme(Phase::Transcribing),
-            ((0, 0, 0, 128), (90, 169, 230, 255))
+            ((22, 42, 58, 128), (90, 169, 230, 191))
         );
         assert_eq!(
             phase_theme(Phase::MicOn),
@@ -700,14 +702,14 @@ mod tests {
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Record, false, &levels);
         let (r, g, b, a) = pixel(&pix, 10, 26);
-        assert!(a > 100 && a < 160 && r < 30 && g < 30 && b < 30, "dim card {r},{g},{b},{a}");
+        assert!(a > 100 && a < 160 && r > g * 2 && r > b * 2, "tinted card {r},{g},{b},{a}");
         let (r, g, b, _) = pixel(&pix, 17, 26);
         assert!(r > 200 && g > 200 && b > 200, "bright bar {r},{g},{b}");
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Transcribing, false, &levels);
         let (r, g, b, a) = pixel(&pix, 10, 26);
-        assert!(a > 100 && r < 30 && g < 30 && b < 30, "dim card {r},{g},{b},{a}");
+        assert!(a > 100 && r < 40 && g < 40 && b < 40, "dim card {r},{g},{b},{a}");
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::MicOn, false, &levels);
