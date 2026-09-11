@@ -427,9 +427,15 @@ fn paint_rgba(r: u8, g: u8, b: u8, a: u8) -> Paint<'static> {
     p
 }
 
-fn draw_pill(pixmap: &mut Pixmap, x: f32, w: f32, fill: (u8, u8, u8), edge: (u8, u8, u8)) {
+fn draw_pill(
+    pixmap: &mut Pixmap,
+    x: f32,
+    w: f32,
+    fill: (u8, u8, u8, u8),
+    edge: (u8, u8, u8, u8),
+) {
     if let Some(path) = stadium(x, PILL_Y, w, PILL_H, PILL_H / 2.0) {
-        let mut fill_paint = paint_rgba(fill.0, fill.1, fill.2, 232);
+        let mut fill_paint = paint_rgba(fill.0, fill.1, fill.2, fill.3);
         fill_paint.anti_alias = true;
         pixmap.fill_path(
             &path,
@@ -438,10 +444,20 @@ fn draw_pill(pixmap: &mut Pixmap, x: f32, w: f32, fill: (u8, u8, u8), edge: (u8,
             Transform::identity(),
             None,
         );
-        let edge_paint = paint_rgba(edge.0, edge.1, edge.2, 255);
+        let edge_paint = paint_rgba(edge.0, edge.1, edge.2, edge.3);
         let mut stroke = Stroke::default();
-        stroke.width = 1.5;
+        stroke.width = 1.0;
         pixmap.stroke_path(&path, &edge_paint, &stroke, Transform::identity(), None);
+    }
+}
+
+// Mirrors quickshell Theme.qml: black@50% cards, white@25% hairlines,
+// accentCritical red while recording, accentLow blue while transcribing.
+fn phase_theme(phase: Phase) -> ((u8, u8, u8, u8), (u8, u8, u8, u8)) {
+    match phase {
+        Phase::Record => ((0, 0, 0, 128), (255, 107, 107, 255)),
+        Phase::Transcribing => ((0, 0, 0, 128), (90, 169, 230, 255)),
+        Phase::MicOn => ((0, 0, 0, 128), (255, 255, 255, 64)),
     }
 }
 
@@ -456,11 +472,12 @@ fn draw(
 
     // ptt: compact bars-only badge showing the live meter, newest on the right.
     if phase == Phase::MicOn {
-        draw_pill(pixmap, 78.0, 116.0, (20, 20, 20), (70, 70, 70));
+        let (fill, edge) = phase_theme(phase);
+        draw_pill(pixmap, 78.0, 116.0, fill, edge);
         let (br, bg, bb) = if stalled {
-            (142, 142, 147)
+            (153, 153, 153)
         } else {
-            (245, 245, 245)
+            (255, 255, 255)
         };
         let bar_paint = paint_rgba(br, bg, bb, 255);
         let fresh: Vec<f32> = levels
@@ -482,19 +499,16 @@ fn draw(
         return;
     }
 
-    // stt: the pill itself is the recording icon — dark red while
-    // recording, dark amber while transcribing.
-    let (fill, edge) = match phase {
-        Phase::Transcribing => ((72, 46, 8), (210, 140, 30)),
-        _ => ((72, 12, 12), (190, 30, 30)),
-    };
+    // stt: the pill itself is the recording icon — critical-red hairline
+    // while recording, low-blue while transcribing.
+    let (fill, edge) = phase_theme(phase);
     draw_pill(pixmap, 4.0, 264.0, fill, edge);
 
     // Level history, newest on the right.
     let (br, bg, bb) = if stalled {
-        (150, 130, 130)
+        (153, 153, 153)
     } else {
-        (245, 235, 235)
+        (255, 255, 255)
     };
     let bar_paint = paint_rgba(br, bg, bb, 255);
     for (i, level) in levels.iter().take(BARS).enumerate() {
@@ -668,18 +682,32 @@ mod tests {
 
     #[test]
     fn stt_pill_themed() {
+        // Mirrors quickshell Theme.qml tokens.
+        assert_eq!(
+            phase_theme(Phase::Record),
+            ((0, 0, 0, 128), (255, 107, 107, 255))
+        );
+        assert_eq!(
+            phase_theme(Phase::Transcribing),
+            ((0, 0, 0, 128), (90, 169, 230, 255))
+        );
+        assert_eq!(
+            phase_theme(Phase::MicOn),
+            ((0, 0, 0, 128), (255, 255, 255, 64))
+        );
+
         let levels = std::collections::VecDeque::from([1.0; BARS]);
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Record, false, &levels);
         let (r, g, b, a) = pixel(&pix, 10, 26);
-        assert!(a > 200 && r > 50 && r > g * 2 && r > b * 2, "red pill {r},{g},{b},{a}");
+        assert!(a > 100 && a < 160 && r < 30 && g < 30 && b < 30, "dim card {r},{g},{b},{a}");
         let (r, g, b, _) = pixel(&pix, 17, 26);
         assert!(r > 200 && g > 200 && b > 200, "bright bar {r},{g},{b}");
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Transcribing, false, &levels);
-        let (r, g, _, _) = pixel(&pix, 10, 26);
-        assert!(r > 50 && g > r / 2, "amber pill {r},{g}");
+        let (r, g, b, a) = pixel(&pix, 10, 26);
+        assert!(a > 100 && r < 30 && g < 30 && b < 30, "dim card {r},{g},{b},{a}");
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::MicOn, false, &levels);
