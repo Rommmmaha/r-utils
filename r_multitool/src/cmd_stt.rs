@@ -1,4 +1,4 @@
-use crate::overlay::{AUDIO_PATH, Overlay, Phase};
+use crate::overlay::{Overlay, Phase, audio_path};
 use crate::utils;
 use anyhow::{Context, Result};
 use async_openai::Client;
@@ -35,11 +35,12 @@ async fn async_main(api_key: String) -> Result<()> {
     let mut sigusr1 = tokio::signal::unix::signal(SignalKind::user_defined1())?;
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sigterm = tokio::signal::unix::signal(SignalKind::terminate())?;
-    let mut overlay = Overlay::spawn(Phase::Record, Some(AUDIO_PATH));
+    let audio = audio_path();
+    let mut overlay = Overlay::spawn(Phase::Record, Some(audio));
     let mut child = Command::new("timeout")
         .arg("65")
         .arg("pw-record")
-        .arg(AUDIO_PATH)
+        .arg(audio)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -58,18 +59,18 @@ async fn async_main(api_key: String) -> Result<()> {
     utils::stop_child(&mut child).await;
     utils::set_mic_volume("0.0");
     if matches!(stop, Stop::Abort) {
-        std::fs::remove_file(AUDIO_PATH).ok();
+        std::fs::remove_file(audio).ok();
         overlay.finish();
         std::process::exit(130);
     }
 
-    let len = std::fs::metadata(AUDIO_PATH).map(|m| m.len()).unwrap_or(0);
+    let len = std::fs::metadata(audio).map(|m| m.len()).unwrap_or(0);
     if len == 0 {
         overlay.finish();
-        anyhow::bail!("recording failed — {AUDIO_PATH} not found");
+        anyhow::bail!("recording failed — {audio} not found");
     }
     if len < MIN_WAV {
-        std::fs::remove_file(AUDIO_PATH).ok();
+        std::fs::remove_file(audio).ok();
         overlay.finish();
         return Ok(());
     }
@@ -80,7 +81,7 @@ async fn async_main(api_key: String) -> Result<()> {
     let client = Client::with_config(config);
     let request = CreateTranscriptionRequestArgs::default()
         .model("whisper-large-v3")
-        .file(std::path::PathBuf::from(AUDIO_PATH))
+        .file(std::path::PathBuf::from(audio))
         .temperature(0.0_f32)
         .build()?;
     let response = tokio::time::timeout(
@@ -88,7 +89,7 @@ async fn async_main(api_key: String) -> Result<()> {
         client.audio().transcribe(request),
     )
     .await;
-    std::fs::remove_file(AUDIO_PATH).ok();
+    std::fs::remove_file(audio).ok();
     let response = response.context("transcribe timed out")??;
     print!("{}", response.text.trim());
     overlay.finish();

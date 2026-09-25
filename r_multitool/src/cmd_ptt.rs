@@ -1,4 +1,4 @@
-use crate::overlay::{Overlay, PTT_METER_PATH, Phase};
+use crate::overlay::{Overlay, Phase, ptt_meter_path};
 use crate::utils;
 use anyhow::{Context, Result};
 use std::process::Stdio;
@@ -23,11 +23,12 @@ async fn async_main() -> Result<()> {
     let mut sigusr1 = tokio::signal::unix::signal(SignalKind::user_defined1())?;
     let mut sigint = tokio::signal::unix::signal(SignalKind::interrupt())?;
     let mut sigterm = tokio::signal::unix::signal(SignalKind::terminate())?;
-    let mut overlay = Overlay::spawn(Phase::MicOn, Some(PTT_METER_PATH));
+    let meter = ptt_meter_path();
+    let mut overlay = Overlay::spawn(Phase::MicOn, Some(meter));
     let mut child = tokio::process::Command::new("timeout")
         .arg("65")
         .arg("pw-record")
-        .arg(PTT_METER_PATH)
+        .arg(meter)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -42,7 +43,7 @@ async fn async_main() -> Result<()> {
         _ = sigterm.recv() => {}
     };
     utils::stop_child(&mut child).await;
-    std::fs::remove_file(PTT_METER_PATH).ok();
+    std::fs::remove_file(meter).ok();
     utils::set_mic_volume("0.0");
     overlay.finish();
     Ok(())

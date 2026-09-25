@@ -23,8 +23,28 @@ use wayland_client::{
     protocol::{wl_output, wl_region::WlRegion, wl_shm, wl_surface},
 };
 
-pub const AUDIO_PATH: &str = "/tmp/r_stt.wav";
-pub const PTT_METER_PATH: &str = "/tmp/r_ptt.wav";
+/// Mic audio lives in the per-user runtime dir (0700) so other users can
+/// neither read recordings nor pre-plant symlinks; falls back to tmp
+/// only where no runtime dir exists (e.g. headless SSH).
+fn runtime_file(name: &str) -> &'static str {
+    use std::sync::OnceLock;
+    static DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        std::env::var("XDG_RUNTIME_DIR")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(std::env::temp_dir)
+    });
+    // Leak is intentional: callers need &'static str and the value never changes.
+    Box::leak(dir.join(name).to_string_lossy().into_owned().into_boxed_str())
+}
+pub fn audio_path() -> &'static str {
+    runtime_file("r_stt.wav")
+}
+pub fn ptt_meter_path() -> &'static str {
+    runtime_file("r_ptt.wav")
+}
 
 const WIDTH: u32 = 272;
 const HEIGHT: u32 = 52;
@@ -220,7 +240,7 @@ fn tick(data: &mut Data) {
     let meter: Option<&str> = data.state.meter_path.as_deref();
     let metered = matches!(phase, Phase::Record | Phase::MicOn) && meter.is_some();
     let stalled = if metered {
-        let len = std::fs::metadata(meter.unwrap_or(AUDIO_PATH))
+        let len = std::fs::metadata(meter.unwrap_or(audio_path()))
             .map(|m| m.len())
             .unwrap_or(0);
         let now = Instant::now();
@@ -233,7 +253,7 @@ fn tick(data: &mut Data) {
         false
     };
     if metered {
-        data.app.levels.push_back(sample_level(meter.unwrap_or(AUDIO_PATH)));
+        data.app.levels.push_back(sample_level(meter.unwrap_or(audio_path())));
         while data.app.levels.len() > BARS {
             data.app.levels.pop_front();
         }
