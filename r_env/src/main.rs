@@ -42,6 +42,14 @@ fn load_secrets() -> Result<HashMap<String, String>, String> {
 fn escape_val(s: &str) -> String {
     s.replace('\'', "'\\''")
 }
+fn valid_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 fn main() {
     let args: Vec<String> = env::args().collect();
     let args = &args[1..];
@@ -67,6 +75,10 @@ fn main() {
                 process::exit(1);
             });
             for key in keys {
+                if !valid_key(key) {
+                    eprintln!("r_env: invalid variable name '{}'", key);
+                    process::exit(1);
+                }
                 match secrets.get(key) {
                     Some(val) => unsafe { env::set_var(key, val) },
                     None => {
@@ -94,6 +106,10 @@ fn main() {
                 process::exit(1);
             });
             for key in keys {
+                if !valid_key(key) {
+                    eprintln!("r_env: invalid variable name '{}'", key);
+                    process::exit(1);
+                }
                 match secrets.get(key) {
                     Some(val) => println!("export {}='{}';", key, escape_val(val)),
                     None => {
