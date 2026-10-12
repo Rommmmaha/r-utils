@@ -32,7 +32,7 @@ use wayland_client::{
 };
 
 const WIDTH: u32 = 64;
-const HEIGHT: u32 = 384;
+const HEIGHT: u32 = 524;
 /// Daemon exits this long after the last command.
 const DISPLAY: Duration = Duration::from_millis(1100);
 /// Backstop so a stuck daemon can never linger forever.
@@ -515,8 +515,8 @@ fn run_daemon(
 
 const TRACK_X: f32 = 26.0;
 const TRACK_W: f32 = 12.0;
-const TRACK_TOP: f32 = 28.0;
-const TRACK_BOT: f32 = 356.0;
+const TRACK_TOP: f32 = 168.0;
+const TRACK_BOT: f32 = 496.0;
 const TICKS: [f32; 4] = [0.2, 0.4, 0.6, 0.8];
 
 fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
@@ -524,7 +524,7 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
     // Same normal-card theme as the ptt badge: black@50% + white@25% ring.
     // 2px ring on integer coords: full coverage along the whole ring, so the
     // caps can't form isolated bright dots the way a 1px hairline does.
-    if let Some(path) = utils::stadium(8.0, 8.0, 48.0, 368.0, 24.0) {
+    if let Some(path) = utils::stadium(8.0, 148.0, 48.0, 368.0, 24.0) {
         let mut fill = utils::paint_rgba(0, 0, 0, 128);
         fill.anti_alias = true;
         pixmap.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
@@ -539,9 +539,7 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
         pixmap.fill_rect(r, &track, Transform::identity(), None);
     }
     let lvl = level.clamp(0.0, 1.5);
-    // Overflow squeezes into the 26px above the track so 150% still fits
-    // the pixmap: linear scale would clip at ~108% (y<0).
-    let fill_h = track_h * lvl.min(1.0) + (lvl - 1.0).max(0.0) * (TRACK_TOP - 2.0) / 0.5;
+    let fill_h = track_h * lvl;
     if fill_h > 0.5 {
         // ponytail: over-100% tints warm so the clamp is visible, not silent.
         let (fr, fg, fb) = if muted {
@@ -576,7 +574,7 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
         let mut stroke = Stroke::default();
         stroke.width = 4.0;
         stroke.line_cap = tiny_skia::LineCap::Round;
-        for (x0, y0, x1, y1) in [(16.0, 176.0, 48.0, 208.0), (48.0, 176.0, 16.0, 208.0)] {
+        for (x0, y0, x1, y1) in [(16.0, 316.0, 48.0, 348.0), (48.0, 316.0, 16.0, 348.0)] {
             let mut pb = PathBuilder::new();
             pb.move_to(x0, y0);
             pb.line_to(x1, y1);
@@ -705,10 +703,10 @@ mod tests {
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 0.65, false);
         for (l, r) in [
-            ((8, 192), (55, 192)),
-            ((15, 369), (48, 369)),
-            ((8, 352), (55, 352)),
-            ((15, 15), (48, 15)),
+            ((8, 332), (55, 332)),
+            ((15, 509), (48, 509)),
+            ((8, 492), (55, 492)),
+            ((15, 155), (48, 155)),
         ] {
             let la = pixel(&pix, l.0, l.1).3 as i16;
             let ra = pixel(&pix, r.0, r.1).3 as i16;
@@ -721,9 +719,9 @@ mod tests {
         // 2px ring: solid along straights and caps, nothing beyond it.
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 0.5, false);
-        assert_eq!(pixel(&pix, 6, 192).3, 0, "fringe outside 2px ring");
-        let straight = pixel(&pix, 8, 192).3 as i16;
-        let arc = pixel(&pix, 15, 15).3 as i16;
+        assert_eq!(pixel(&pix, 6, 332).3, 0, "fringe outside 2px ring");
+        let straight = pixel(&pix, 8, 332).3 as i16;
+        let arc = pixel(&pix, 15, 155).3 as i16;
         assert!((straight - arc).abs() < 30, "ring uneven {straight} vs {arc}");
     }
 
@@ -754,7 +752,17 @@ mod tests {
         // Muted: fill gray + red cross at center.
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 0.5, true);
-        let (r, g, b, _) = pixel(&pix, 32, 192);
+        let (r, g, b, _) = pixel(&pix, 32, 332);
         assert!(r > 200 && g <= 130 && b <= 130, "mute cross red {r},{g},{b}");
+    }
+
+    #[test]
+    fn overflow_bursts_pill() {
+        // 150% must clear the pill top (148) with the warm tint intact.
+        let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        draw(&mut pix, 1.5, false);
+        let (r, g, b, a) = pixel(&pix, 32, 100);
+        assert!(a > 200 && r > 200 && g > 100 && b < 200, "overflow warm {r},{g},{b},{a}");
+        assert_eq!(pixel(&pix, 32, 2).3, 0, "tip inside pixmap");
     }
 }
