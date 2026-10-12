@@ -569,6 +569,23 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
             }
         }
     }
+    // Over-100% trophies: same tick style, but gated until cleared by 2%.
+    for m in [1.0, 1.2, 1.4] {
+        if lvl < m + 0.02 {
+            continue;
+        }
+        let y = TRACK_BOT - track_h * m;
+        let tick = utils::paint_rgba(255, 255, 255, 110);
+        if let Some(r) = Rect::from_xywh(TRACK_X - 6.0, y - 1.0, TRACK_W + 12.0, 2.0) {
+            pixmap.fill_rect(r, &tick, Transform::identity(), None);
+        }
+        if !muted && fill_h > 0.5 {
+            let cut = utils::paint_rgba(0, 0, 0, 170);
+            if let Some(r) = Rect::from_xywh(TRACK_X, y - 1.0, TRACK_W, 2.0) {
+                pixmap.fill_rect(r, &cut, Transform::identity(), None);
+            }
+        }
+    }
     if muted {
         let cross = utils::paint_rgba(255, 120, 120, 255);
         let mut stroke = Stroke::default();
@@ -754,6 +771,30 @@ mod tests {
         draw(&mut pix, 0.5, true);
         let (r, g, b, _) = pixel(&pix, 32, 332);
         assert!(r > 200 && g <= 130 && b <= 130, "mute cross red {r},{g},{b}");
+    }
+
+    #[test]
+    fn overflow_marks_gate() {
+        // Trophies appear only once the level clears them by 2%.
+        let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        draw(&mut pix, 1.0, false);
+        let (r, g, b, _) = pixel(&pix, 32, 168);
+        assert!(r > 200 && g > 200 && b > 200, "100 unmarked at exactly 100% {r},{g},{b}");
+        let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        draw(&mut pix, 1.1, false);
+        let (r, g, b, _) = pixel(&pix, 32, 168);
+        assert!(r < 100 && g < 100 && b < 100, "100 marked past 102% {r},{g},{b}");
+        assert_eq!(pixel(&pix, 32, 102).3, 0, "120 unmarked at 110%");
+        let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        draw(&mut pix, 1.41, false);
+        let (r, g, _, _) = pixel(&pix, 32, 36);
+        assert!(r > 200 && g > 100, "140 unmarked at 141% {r},{g}");
+        let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
+        draw(&mut pix, 1.5, false);
+        for y in [168, 102, 36] {
+            let (r, g, b, _) = pixel(&pix, 32, y);
+            assert!(r < 100 && g < 100 && b < 100, "mark cut at {y} {r},{g},{b}");
+        }
     }
 
     #[test]
