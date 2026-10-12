@@ -539,7 +539,7 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
         pixmap.fill_rect(r, &track, Transform::identity(), None);
     }
     let lvl = level.clamp(0.0, 1.5);
-    let fill_h = track_h * lvl.min(1.0);
+    let fill_h = track_h * lvl;
     if fill_h > 0.5 {
         // ponytail: over-100% tints warm so the clamp is visible, not silent.
         let (fr, fg, fb) = if muted {
