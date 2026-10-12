@@ -554,17 +554,19 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
             pixmap.fill_rect(r, &fill, Transform::identity(), None);
         }
     }
-    // Tick at f sits over fill iff f <= lvl: dark-on-fill, light-on-track.
+    // Ticks: bright full-width wings always; black center only where the bar covers it.
     for f in TICKS {
         let y = TRACK_BOT - track_h * f;
         let over_fill = !muted && f <= lvl.min(1.0) && fill_h > 0.5;
-        let tick = if over_fill {
-            utils::paint_rgba(0, 0, 0, 170)
-        } else {
-            utils::paint_rgba(255, 255, 255, 110)
-        };
+        let tick = utils::paint_rgba(255, 255, 255, 110);
         if let Some(r) = Rect::from_xywh(TRACK_X - 6.0, y - 1.0, TRACK_W + 12.0, 2.0) {
             pixmap.fill_rect(r, &tick, Transform::identity(), None);
+        }
+        if over_fill {
+            let cut = utils::paint_rgba(0, 0, 0, 170);
+            if let Some(r) = Rect::from_xywh(TRACK_X, y - 1.0, TRACK_W, 2.0) {
+                pixmap.fill_rect(r, &cut, Transform::identity(), None);
+            }
         }
     }
     if muted {
@@ -740,6 +742,8 @@ mod tests {
         let y_tick = (TRACK_BOT - track_h * 0.4) as u32;
         let (r, g, b, _) = pixel(&pix, 32, y_tick);
         assert!(r < 100 && g < 100 && b < 100, "tick dark on fill {r},{g},{b}");
+        let (sr, sg, sb, _) = pixel(&pix, 22, y_tick);
+        assert!(sr > 100 && sg > 100 && sb > 100, "tick wings stay bright on fill {sr},{sg},{sb}");
         let y_empty = (TRACK_BOT - track_h * 0.8) as u32;
         let y_plain = (TRACK_BOT - track_h * 0.7) as u32;
         let (tr, tg, tb, _) = pixel(&pix, 32, y_empty);
