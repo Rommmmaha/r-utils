@@ -94,8 +94,40 @@ fn physical_sink_ids() -> anyhow::Result<Vec<u32>> {
     Ok(ids)
 }
 
+fn volume_sink_ids() -> anyhow::Result<Vec<u32>> {
+    Ok(pick_sinks(physical_sink_ids()?, default_sink_id()))
+}
+
 fn drop_sink_cache() {
     let _ = std::fs::remove_file(runtime_dir().join("r_vol.sinks"));
+}
+
+/// Default sink id, virtual ones included (`wpctl inspect` starts with `id N,`).
+fn parse_default_id(out: &str) -> Option<u32> {
+    out.lines()
+        .next()?
+        .strip_prefix("id ")?
+        .split(',')
+        .next()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn default_sink_id() -> Option<u32> {
+    parse_default_id(&utils::exec_output(
+        "wpctl",
+        &["inspect", "@DEFAULT_AUDIO_SINK@"],
+    )?)
+}
+
+/// The default output alone when it is physical; every physical output when
+/// the default is virtual (X1/X2), so the speakers still follow the bar.
+fn pick_sinks(ids: Vec<u32>, default: Option<u32>) -> Vec<u32> {
+    match default {
+        Some(d) if ids.contains(&d) => vec![d],
+        _ => ids,
+    }
 }
 
 fn get_physical_sink_ids(nodes: &[PwNode]) -> Vec<u32> {
@@ -252,7 +284,7 @@ fn try_send(norm: &str) -> Send {
 /// Synchronous fallback: adjusts without any pill. Used headless and when
 /// the daemon socket is unusable.
 fn direct_one_shot(norm: &str) -> anyhow::Result<()> {
-    let ids = physical_sink_ids()?;
+    let ids = volume_sink_ids()?;
     if norm == "toggle" {
         wpctl_all(&ids, "set-mute", "toggle")
     } else {
@@ -271,7 +303,7 @@ pub fn run(arg: &str) -> anyhow::Result<()> {
         Send::Broken => return direct_one_shot(&norm),
     }
     // Cold tick: become the daemon.
-    let ids = physical_sink_ids()?;
+    let ids = volume_sink_ids()?;
     let primary = ids[0].to_string();
     let (level, muted) = read_level(&primary);
     match UnixListener::bind(sock_path()) {
@@ -494,7 +526,7 @@ fn run_daemon(
             if app.sinks_dirty {
                 app.sinks_dirty = false;
                 drop_sink_cache();
-                match physical_sink_ids() {
+                match volume_sink_ids() {
                     Ok(ids) => {
                         app.primary = ids[0].to_string();
                         app.ids = ids;
@@ -767,6 +799,18 @@ mod tests {
         assert_eq!(parse_sink_cache("41 42"), Some(vec![41, 42]));
         assert_eq!(parse_sink_cache(""), None);
         assert_eq!(parse_sink_cache("41 xx"), None);
+    }
+
+    #[test]
+    fn sinks_follow_default() {
+        // Physical default: touch only it. Virtual/unknown: all physical.
+        assert_eq!(pick_sinks(vec![58, 59], Some(59)), vec![59]);
+        assert_eq!(pick_sinks(vec![58, 59], Some(32)), vec![58, 59]);
+        assert_eq!(pick_sinks(vec![58, 59], None), vec![58, 59]);
+        let inspect =
+            "id 32, type PipeWire:Interface:Node\n\tfactory.name = \"support.null-audio-sink\"\n";
+        assert_eq!(parse_default_id(inspect), Some(32));
+        assert_eq!(parse_default_id("garbage"), None);
     }
 
     #[test]
