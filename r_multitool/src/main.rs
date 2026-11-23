@@ -14,9 +14,7 @@ struct Cli {
 #[derive(clap::Subcommand)]
 enum Commands {
     Cycle,
-    Vol {
-        amount: String,
-    },
+    Vol { amount: String },
     Ptt,
     Mute,
     Stt,

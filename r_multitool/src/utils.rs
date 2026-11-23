@@ -79,11 +79,32 @@ pub fn stadium(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let mut pb = PathBuilder::new();
     pb.move_to(x + r, y);
     pb.line_to(x + w - r, y);
-    pb.cubic_to(x + w - r + KAPPA * r, y, x + w, y + r - KAPPA * r, x + w, y + r);
+    pb.cubic_to(
+        x + w - r + KAPPA * r,
+        y,
+        x + w,
+        y + r - KAPPA * r,
+        x + w,
+        y + r,
+    );
     pb.line_to(x + w, y + h - r);
-    pb.cubic_to(x + w, y + h - r + KAPPA * r, x + w - r + KAPPA * r, y + h, x + w - r, y + h);
+    pb.cubic_to(
+        x + w,
+        y + h - r + KAPPA * r,
+        x + w - r + KAPPA * r,
+        y + h,
+        x + w - r,
+        y + h,
+    );
     pb.line_to(x + r, y + h);
-    pb.cubic_to(x + r - KAPPA * r, y + h, x, y + h - r + KAPPA * r, x, y + h - r);
+    pb.cubic_to(
+        x + r - KAPPA * r,
+        y + h,
+        x,
+        y + h - r + KAPPA * r,
+        x,
+        y + h - r,
+    );
     pb.line_to(x, y + r);
     pb.cubic_to(x, y + r - KAPPA * r, x + r - KAPPA * r, y, x + r, y);
     pb.close();
@@ -110,8 +131,14 @@ pub fn upload_rgba(
     if pool.len() < size && pool.resize(size).is_err() {
         return;
     }
-    if let Ok((buffer, canvas)) = pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888) {
-        for (pixel, out) in pixmap.data().chunks_exact(4).zip(canvas.chunks_exact_mut(4)) {
+    if let Ok((buffer, canvas)) =
+        pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888)
+    {
+        for (pixel, out) in pixmap
+            .data()
+            .chunks_exact(4)
+            .zip(canvas.chunks_exact_mut(4))
+        {
             out[0] = pixel[2];
             out[1] = pixel[1];
             out[2] = pixel[0];

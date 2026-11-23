@@ -87,7 +87,10 @@ fn physical_sink_ids() -> anyhow::Result<Vec<u32>> {
     if ids.is_empty() {
         anyhow::bail!("No physical sinks found");
     }
-    let _ = std::fs::write(&cache, ids.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+    let _ = std::fs::write(
+        &cache,
+        ids.iter().map(u32::to_string).collect::<Vec<_>>().join(" "),
+    );
     Ok(ids)
 }
 
@@ -125,7 +128,12 @@ fn normalize_arg(arg: &str) -> anyhow::Result<String> {
     if a == "toggle" || a == "mute" {
         return Ok("toggle".to_string());
     }
-    if a.is_empty() || a.len() > 16 || !a.bytes().all(|b| b.is_ascii_digit() || b"%.+-".contains(&b)) {
+    if a.is_empty()
+        || a.len() > 16
+        || !a
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b"%.+-".contains(&b))
+    {
         anyhow::bail!("bad volume arg: {arg}");
     }
     // `+2%` -> `2%+` (wpctl wants the sign trailing).
@@ -221,8 +229,12 @@ fn try_send(norm: &str) -> Send {
             return Send::NoDaemon;
         }
     };
-    if stream.set_read_timeout(Some(Duration::from_millis(500))).is_err()
-        || stream.set_write_timeout(Some(Duration::from_millis(500))).is_err()
+    if stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .is_err()
+        || stream
+            .set_write_timeout(Some(Duration::from_millis(500)))
+            .is_err()
     {
         return Send::Broken;
     }
@@ -386,15 +398,21 @@ fn run_daemon(
     let qh = queue.handle();
     let registry_state = RegistryState::new(&globals);
     let output_state = OutputState::new(&globals, &qh);
-    let compositor_state = CompositorState::bind(&globals, &qh).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let compositor_state =
+        CompositorState::bind(&globals, &qh).map_err(|e| anyhow::anyhow!("{e}"))?;
     let layer_shell = LayerShell::bind(&globals, &qh).map_err(|e| anyhow::anyhow!("{e}"))?;
     let shm = Shm::bind(&globals, &qh).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let surface = compositor_state.create_surface(&qh);
     let region = compositor_state.wl_compositor().create_region(&qh, ());
     surface.set_input_region(Some(&region));
-    let layer_surface =
-        layer_shell.create_layer_surface(&qh, surface.clone(), Layer::Overlay, Some("r_multitool-vol"), None);
+    let layer_surface = layer_shell.create_layer_surface(
+        &qh,
+        surface.clone(),
+        Layer::Overlay,
+        Some("r_multitool-vol"),
+        None,
+    );
     layer_surface.set_anchor(Anchor::RIGHT | Anchor::BOTTOM);
     layer_surface.set_size(WIDTH, HEIGHT);
     layer_surface.set_margin(0, 24, 48, 0);
@@ -402,8 +420,8 @@ fn run_daemon(
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
 
-    let slot_pool =
-        SlotPool::new(WIDTH as usize * HEIGHT as usize * 4, &shm).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let slot_pool = SlotPool::new(WIDTH as usize * HEIGHT as usize * 4, &shm)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut app = App {
         registry_state,
         output_state,
@@ -504,7 +522,10 @@ fn run_daemon(
         if app.done || app.start.elapsed() > MAX_LIFE {
             break;
         }
-        if event_loop.dispatch(Some(Duration::from_millis(100)), &mut app).is_err() {
+        if event_loop
+            .dispatch(Some(Duration::from_millis(100)), &mut app)
+            .is_err()
+        {
             break;
         }
     }
@@ -605,11 +626,39 @@ fn draw(pixmap: &mut Pixmap, level: f32, muted: bool) {
 // --- wayland boilerplate ---
 
 impl CompositorHandler for App {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
-    fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: i32,
+    ) {
+    }
+    fn transform_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: wl_output::Transform,
+    ) {
+    }
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl OutputHandler for App {
@@ -651,7 +700,15 @@ impl ProvidesRegistryState for App {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
-    fn runtime_add_global(&mut self, _: &Connection, _: &QueueHandle<Self>, _: u32, _: &str, _: u32) {}
+    fn runtime_add_global(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: u32,
+        _: &str,
+        _: u32,
+    ) {
+    }
     fn runtime_remove_global(&mut self, _: &Connection, _: &QueueHandle<Self>, _: u32, _: &str) {}
 }
 
@@ -727,7 +784,10 @@ mod tests {
         ] {
             let la = pixel(&pix, l.0, l.1).3 as i16;
             let ra = pixel(&pix, r.0, r.1).3 as i16;
-            assert!((la - ra).abs() < 25, "cap asymmetric {l:?}={la} vs {r:?}={ra}");
+            assert!(
+                (la - ra).abs() < 25,
+                "cap asymmetric {l:?}={la} vs {r:?}={ra}"
+            );
         }
     }
 
@@ -739,7 +799,10 @@ mod tests {
         assert_eq!(pixel(&pix, 6, 332).3, 0, "fringe outside 2px ring");
         let straight = pixel(&pix, 8, 332).3 as i16;
         let arc = pixel(&pix, 15, 155).3 as i16;
-        assert!((straight - arc).abs() < 30, "ring uneven {straight} vs {arc}");
+        assert!(
+            (straight - arc).abs() < 30,
+            "ring uneven {straight} vs {arc}"
+        );
     }
 
     #[test]
@@ -758,19 +821,31 @@ mod tests {
         assert!(r > 200 && g > 200 && b > 200, "fill bright {r},{g},{b}");
         let y_tick = (TRACK_BOT - track_h * 0.4) as u32;
         let (r, g, b, _) = pixel(&pix, 32, y_tick);
-        assert!(r < 100 && g < 100 && b < 100, "tick dark on fill {r},{g},{b}");
+        assert!(
+            r < 100 && g < 100 && b < 100,
+            "tick dark on fill {r},{g},{b}"
+        );
         let (sr, sg, sb, _) = pixel(&pix, 22, y_tick);
-        assert!(sr > 100 && sg > 100 && sb > 100, "tick wings stay bright on fill {sr},{sg},{sb}");
+        assert!(
+            sr > 100 && sg > 100 && sb > 100,
+            "tick wings stay bright on fill {sr},{sg},{sb}"
+        );
         let y_empty = (TRACK_BOT - track_h * 0.8) as u32;
         let y_plain = (TRACK_BOT - track_h * 0.7) as u32;
         let (tr, tg, tb, _) = pixel(&pix, 32, y_empty);
         let (pr, pg, pb, _) = pixel(&pix, 32, y_plain);
-        assert!(tr > pr + 40 && tg > pg + 40 && tb > pb + 40, "tick lighter than track {tr},{tg},{tb} vs {pr},{pg},{pb}");
+        assert!(
+            tr > pr + 40 && tg > pg + 40 && tb > pb + 40,
+            "tick lighter than track {tr},{tg},{tb} vs {pr},{pg},{pb}"
+        );
         // Muted: fill gray + red cross at center.
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 0.5, true);
         let (r, g, b, _) = pixel(&pix, 32, 332);
-        assert!(r > 200 && g <= 130 && b <= 130, "mute cross red {r},{g},{b}");
+        assert!(
+            r > 200 && g <= 130 && b <= 130,
+            "mute cross red {r},{g},{b}"
+        );
     }
 
     #[test]
@@ -779,11 +854,17 @@ mod tests {
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 1.0, false);
         let (r, g, b, _) = pixel(&pix, 32, 168);
-        assert!(r > 200 && g > 200 && b > 200, "100 unmarked at exactly 100% {r},{g},{b}");
+        assert!(
+            r > 200 && g > 200 && b > 200,
+            "100 unmarked at exactly 100% {r},{g},{b}"
+        );
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 1.1, false);
         let (r, g, b, _) = pixel(&pix, 32, 168);
-        assert!(r < 100 && g < 100 && b < 100, "100 marked past 102% {r},{g},{b}");
+        assert!(
+            r < 100 && g < 100 && b < 100,
+            "100 marked past 102% {r},{g},{b}"
+        );
         assert_eq!(pixel(&pix, 32, 102).3, 0, "120 unmarked at 110%");
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 1.41, false);
@@ -803,7 +884,10 @@ mod tests {
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, 1.5, false);
         let (r, g, b, a) = pixel(&pix, 32, 100);
-        assert!(a > 200 && r > 200 && g > 100 && b < 200, "overflow warm {r},{g},{b},{a}");
+        assert!(
+            a > 200 && r > 200 && g > 100 && b < 200,
+            "overflow warm {r},{g},{b},{a}"
+        );
         assert_eq!(pixel(&pix, 32, 2).3, 0, "tip inside pixmap");
     }
 }

@@ -12,8 +12,7 @@ pub fn run() -> anyhow::Result<()> {
         .trim()
         .parse::<i32>()
     {
-        let cmdline =
-            std::fs::read_to_string(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        let cmdline = std::fs::read_to_string(format!("/proc/{pid}/cmdline")).unwrap_or_default();
         if cmdline.contains("r_multitool") {
             let _ = kill(Pid::from_raw(pid), Signal::SIGUSR1);
         }

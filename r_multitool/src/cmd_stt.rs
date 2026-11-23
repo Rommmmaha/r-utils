@@ -84,11 +84,8 @@ async fn async_main(api_key: String) -> Result<()> {
         .file(std::path::PathBuf::from(audio))
         .temperature(0.0_f32)
         .build()?;
-    let response = tokio::time::timeout(
-        Duration::from_secs(30),
-        client.audio().transcribe(request),
-    )
-    .await;
+    let response =
+        tokio::time::timeout(Duration::from_secs(30), client.audio().transcribe(request)).await;
     std::fs::remove_file(audio).ok();
     let response = response.context("transcribe timed out")??;
     print!("{}", response.text.trim());

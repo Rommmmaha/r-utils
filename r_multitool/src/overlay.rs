@@ -1,6 +1,7 @@
 //! Shared bottom-pill layershell widget (whisprflow-style) for `stt` and `ptt`.
 //! Runs its own Wayland event loop on a background thread; all failures are
 //! silent so callers keep working headless / without a compositor.
+use crate::utils;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
@@ -13,7 +14,6 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler, slot::SlotPool},
 };
-use crate::utils;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::{Duration, Instant};
@@ -38,7 +38,12 @@ fn runtime_file(name: &str) -> &'static str {
             .unwrap_or_else(std::env::temp_dir)
     });
     // Leak is intentional: callers need &'static str and the value never changes.
-    Box::leak(dir.join(name).to_string_lossy().into_owned().into_boxed_str())
+    Box::leak(
+        dir.join(name)
+            .to_string_lossy()
+            .into_owned()
+            .into_boxed_str(),
+    )
 }
 pub fn audio_path() -> &'static str {
     runtime_file("r_stt.wav")
@@ -162,8 +167,13 @@ fn run_wayland(state: &Arc<State>) -> anyhow::Result<()> {
     // Empty input region = click-through.
     let region = compositor_state.wl_compositor().create_region(&qh, ());
     surface.set_input_region(Some(&region));
-    let layer_surface =
-        layer_shell.create_layer_surface(&qh, surface.clone(), Layer::Overlay, Some("r_multitool-pill"), None);
+    let layer_surface = layer_shell.create_layer_surface(
+        &qh,
+        surface.clone(),
+        Layer::Overlay,
+        Some("r_multitool-pill"),
+        None,
+    );
     layer_surface.set_anchor(Anchor::BOTTOM);
     layer_surface.set_size(WIDTH, HEIGHT);
     layer_surface.set_margin(0, 0, 32, 0);
@@ -171,8 +181,8 @@ fn run_wayland(state: &Arc<State>) -> anyhow::Result<()> {
     layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer_surface.commit();
 
-    let slot_pool =
-        SlotPool::new(WIDTH as usize * HEIGHT as usize * 4, &shm).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let slot_pool = SlotPool::new(WIDTH as usize * HEIGHT as usize * 4, &shm)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let app = App {
         registry_state,
         output_state,
@@ -249,12 +259,15 @@ fn tick(data: &mut Data) {
             data.app.last_len = len;
             data.app.last_progress = now;
         }
-        elapsed > Duration::from_secs(1) && now - data.app.last_progress > Duration::from_millis(1500)
+        elapsed > Duration::from_secs(1)
+            && now - data.app.last_progress > Duration::from_millis(1500)
     } else {
         false
     };
     if metered {
-        data.app.levels.push_back(sample_level(meter.unwrap_or(audio_path())));
+        data.app
+            .levels
+            .push_back(sample_level(meter.unwrap_or(audio_path())));
         while data.app.levels.len() > BARS {
             data.app.levels.pop_front();
         }
@@ -375,8 +388,10 @@ fn sample_level(path: &str) -> f32 {
                     let x = ((s[2] as i8 as i32) << 16) | ((s[1] as i32) << 8) | (s[0] as i32);
                     (x as f32).abs() / 8388608.0
                 }
-                (_, 32) => (i32::from_le_bytes(s.try_into().ok().unwrap_or([0; 4])) as f32).abs()
-                    / 2147483648.0,
+                (_, 32) => {
+                    (i32::from_le_bytes(s.try_into().ok().unwrap_or([0; 4])) as f32).abs()
+                        / 2147483648.0
+                }
                 _ => return 0.0,
             };
             if v > peak {
@@ -389,13 +404,7 @@ fn sample_level(path: &str) -> f32 {
 
 // --- drawing ---
 
-fn draw_pill(
-    pixmap: &mut Pixmap,
-    x: f32,
-    w: f32,
-    fill: (u8, u8, u8, u8),
-    edge: (u8, u8, u8, u8),
-) {
+fn draw_pill(pixmap: &mut Pixmap, x: f32, w: f32, fill: (u8, u8, u8, u8), edge: (u8, u8, u8, u8)) {
     // 2px ring on integer coords: full coverage along the whole ring, so the
     // caps can't form isolated bright dots the way a 1px hairline does.
     if let Some(path) = utils::stadium(x, PILL_Y, w, PILL_H, PILL_H / 2.0) {
@@ -509,8 +518,7 @@ impl CompositorHandler for App {
         _: wl_output::Transform,
     ) {
     }
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
-    }
+    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
     fn surface_enter(
         &mut self,
         _: &Connection,
@@ -666,14 +674,20 @@ mod tests {
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Record, false, &levels);
         let (r, g, b, a) = pixel(&pix, 10, 26);
-        assert!(a > 100 && a < 160 && r > g * 2 && r > b * 2, "tinted card {r},{g},{b},{a}");
+        assert!(
+            a > 100 && a < 160 && r > g * 2 && r > b * 2,
+            "tinted card {r},{g},{b},{a}"
+        );
         let (r, g, b, _) = pixel(&pix, 17, 26);
         assert!(r > 200 && g > 200 && b > 200, "bright bar {r},{g},{b}");
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::Transcribing, false, &levels);
         let (r, g, b, a) = pixel(&pix, 10, 26);
-        assert!(a > 100 && r < 40 && g < 40 && b < 40, "dim card {r},{g},{b},{a}");
+        assert!(
+            a > 100 && r < 40 && g < 40 && b < 40,
+            "dim card {r},{g},{b},{a}"
+        );
 
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::MicOn, false, &levels);
@@ -682,14 +696,21 @@ mod tests {
         assert!(r > 200 && g > 200 && b > 200, "white badge bar {r},{g},{b}");
 
         // Badge maps levels to bar heights: quiet left, loud right.
-        let ramp: std::collections::VecDeque<f32> =
-            (0..BARS as u32).map(|i| i as f32 / (BARS as f32 - 1.0)).collect();
+        let ramp: std::collections::VecDeque<f32> = (0..BARS as u32)
+            .map(|i| i as f32 / (BARS as f32 - 1.0))
+            .collect();
         let mut pix = Pixmap::new(WIDTH, HEIGHT).unwrap();
         draw(&mut pix, Phase::MicOn, false, &ramp);
         let (r, g, b, _) = pixel(&pix, 91, 14);
-        assert!(r < 40 && g < 40 && b < 40, "quiet bar stays short {r},{g},{b}");
+        assert!(
+            r < 40 && g < 40 && b < 40,
+            "quiet bar stays short {r},{g},{b}"
+        );
         let (r, g, b, _) = pixel(&pix, 179, 14);
-        assert!(r > 200 && g > 200 && b > 200, "loud bar reaches up {r},{g},{b}");
+        assert!(
+            r > 200 && g > 200 && b > 200,
+            "loud bar reaches up {r},{g},{b}"
+        );
     }
 
     #[test]
@@ -701,7 +722,10 @@ mod tests {
         assert_eq!(pixel(&pix, 2, 26).3, 0, "fringe outside 2px ring");
         let straight = pixel(&pix, 4, 26).3 as i16;
         let arc = pixel(&pix, 9, 13).3 as i16;
-        assert!((straight - arc).abs() < 50, "ring uneven {straight} vs {arc}");
+        assert!(
+            (straight - arc).abs() < 50,
+            "ring uneven {straight} vs {arc}"
+        );
     }
 
     #[test]
